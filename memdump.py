@@ -389,8 +389,22 @@ def fix_elf(src_path, out_path, base_addr):
     flen = len(buf)
 
     if buf[0:4] != b"\x7fELF":
-        print("[!] Not an ELF file!")
-        return False
+        # Check if the rest of the ELF header looks valid (corrupted magic)
+        e_phentsize = (
+            struct.unpack_from("<H", buf, 54 if buf[4:5] != b"\x01" else 42)[0]
+            if len(buf) > 56
+            else 0
+        )
+        if len(buf) > 64 and _r32(buf, 20) == 1 and e_phentsize in (32, 56):
+            print("[!] ELF magic corrupted (anti-dump protection detected)")
+            print("[*] Auto-patching ELF header...")
+            buf[0:8] = b"\x7fELF\x02\x01\x01\x00"
+            if e_phentsize == 32:
+                buf[4] = 1  # ELFCLASS32
+            print("[+] Patched successfully")
+        else:
+            print("[!] Not an ELF file!")
+            return False
 
     is32 = buf[4] == _ELFCLASS32
     print(f"[*] ELF class: {'ELF32' if is32 else 'ELF64'}")
